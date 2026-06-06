@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use CodeIgniter\HTTP\ResponseInterface;
 
 use App\Models\ProductModel;
+use Dompdf\Dompdf;
 
 class ProdukController extends BaseController
 {
@@ -22,6 +23,27 @@ function __construct()
          'products' => $this->productModel->findAll()
         ]);
     }
+    public function create()
+{
+    $dataFoto = $this->request->getFile('foto');
+
+    $dataForm = [
+        'nama' => $this->request->getPost('nama'),
+        'harga' => $this->request->getPost('harga'),
+        'jumlah' => $this->request->getPost('jumlah') 
+    ];
+
+    if ($dataFoto->isValid()) {
+        $fileName = $dataFoto->getRandomName(); 
+        $dataFoto->move('img/', $fileName);
+        
+        $dataForm['foto'] = $fileName;
+    }
+
+    $this->productModel->insert($dataForm);
+
+    return redirect('produk')->with('success', 'Data Berhasil Ditambah');
+} 
 public function edit($id)
 {
     $dataProduk = $this->productModel->find($id);
@@ -59,4 +81,37 @@ public function delete($id)
 
     return redirect('produk')->with('success', 'Data Berhasil Dihapus');
 }
+
+public function download()
+{
+    // Ambil data produk dari database
+    $products = $this->productModel->findAll();
+
+    // Render view menjadi HTML
+    $html = view('produk/download_pdf', [
+        'products' => $products
+    ]);
+
+    // Nama file PDF
+    $filename = date('Y-m-d-H-i-s') . '-produk.pdf';
+
+    // Inisialisasi Dompdf
+    $dompdf = new Dompdf();
+
+    // Load HTML ke Dompdf
+    $dompdf->loadHtml($html);
+
+    // Setting ukuran kertas dan orientasi
+    $dompdf->setPaper('A4', 'portrait');
+
+    // Generate PDF
+    $dompdf->render();
+
+    // Download / tampilkan PDF
+    $dompdf->stream($filename, [
+        'Attachment' => true
+    ]);
 }
+}
+
+
