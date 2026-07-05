@@ -33,6 +33,16 @@
 </div>
 
 <div class="col-12">
+    <?= form_label('Kode Voucher', 'voucher_code', ['class' => 'form-label']) ?>
+    <?= form_input([
+        'name'  => 'voucher_code',
+        'id'    => 'voucher_code',
+        'class' => 'form-control',
+        'placeholder' => 'Contoh: FLASH10']) ?>
+    <small class="text-muted">Tersedia: FLASH10, FLASH15, MEMBER20</small>
+</div>
+
+<div class="col-12">
     <?= form_label('Ongkir', 'ongkir', ['class' => 'form-label']) ?>
     <?= form_input([
         'name'     => 'ongkir',
@@ -51,42 +61,67 @@
 <?= form_close() ?> 
     </div>
     <div class="col-lg-6">
-        <table class="table">
-  <thead>
-      <tr>
-          <th scope="col">Nama</th>
-          <th scope="col">Harga</th>
-          <th scope="col">Jumlah</th>
-          <th scope="col">Sub Total</th>
-      </tr>
-  </thead>
-  <tbody>
-      <?php 
-      if (!empty($items)) :
-          foreach ($items as $index => $item) :
-      ?>
-              <tr>
-                  <td><?= $item['name'] ?></td>
-                  <td><?= number_to_currency($item['price'], 'IDR') ?></td>
-                  <td><?= $item['qty'] ?></td>
-                  <td><?= number_to_currency($item['price'] * $item['qty'], 'IDR') ?></td>
-              </tr>
-      <?php
-          endforeach;
-      endif;
-      ?>
-      <tr>
-          <td colspan="2"></td>
-          <td>Subtotal</td>
-          <td><?= number_to_currency($total, 'IDR') ?></td>
-      </tr>
-      <tr>
-          <td colspan="2"></td>
-          <td>Total</td>
-          <td><span id="total"><?= number_to_currency($total, 'IDR') ?></span></td>
-      </tr>
-  </tbody>
-</table>
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Ringkasan Pesanan</h5>
+                <table class="table">
+                  <thead>
+                      <tr>
+                          <th scope="col">Nama</th>
+                          <th scope="col">Harga</th>
+                          <th scope="col">Jumlah</th>
+                          <th scope="col">Sub Total</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      <?php 
+                      if (!empty($items)) :
+                          foreach ($items as $index => $item) :
+                      ?>
+                              <tr>
+                                  <td><?= $item['name'] ?></td>
+                                  <td><?= number_to_currency($item['price'], 'IDR') ?></td>
+                                  <td><?= $item['qty'] ?></td>
+                                  <td><?= number_to_currency($item['price'] * $item['qty'], 'IDR') ?></td>
+                              </tr>
+                      <?php
+                          endforeach;
+                      endif;
+                      ?>
+                      <tr>
+                          <td colspan="2"></td>
+                          <td>Subtotal</td>
+                          <td><?= number_to_currency($total, 'IDR') ?></td>
+                      </tr>
+                      <tr id="row-diskon" style="display:none;">
+                          <td colspan="2"></td>
+                          <td class="text-danger">Diskon Voucher</td>
+                          <td id="diskon_voucher" class="text-danger">-</td>
+                      </tr>
+                      <tr>
+                          <td colspan="2"></td>
+                          <td>PPN (11%)</td>
+                          <td id="ppn_value">-</td>
+                      </tr>
+                      <tr>
+                          <td colspan="2"></td>
+                          <td>Biaya Admin</td>
+                          <td id="admin_value">-</td>
+                      </tr>
+                      <tr>
+                          <td colspan="2"></td>
+                          <td class="text-success">Subtotal (+PPN+Admin-Voucher)</td>
+                          <td id="subtotal_after" class="text-success fw-bold">-</td>
+                      </tr>
+                      <tr>
+                          <td colspan="2"></td>
+                          <td class="fw-bold">Grand Total (incl. Ongkir)</td>
+                          <td id="total" class="fw-bold">-</td>
+                      </tr>
+                  </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 </div>
 <?= $this->endSection() ?>
@@ -97,12 +132,46 @@ $(document).ready(function() {
     let subtotal = <?= $total ?>;
     hitungTotal();
 
-    function hitungTotal() {
-        let total = subtotal + ongkir;
+    function hitungBiayaAdmin(total) {
+        if (total <= 20000000) return total * 0.006;
+        if (total <= 40000000) return total * 0.008;
+        return total * 0.01;
+    }
 
+    function getVoucherPersen(kode) {
+        const vouchers = { 'FLASH10': 0.10, 'FLASH15': 0.15, 'MEMBER20': 0.20 };
+        kode = (kode || '').toUpperCase().trim();
+        return vouchers[kode] || 0;
+    }
+
+    function hitungDiskonVoucher(total, kode) {
+        const persen = getVoucherPersen(kode);
+        return total * persen;
+    }
+
+    function hitungTotal() {
+        let kode = $("#voucher_code").val();
+        let persen = getVoucherPersen(kode);
+        let diskon = hitungDiskonVoucher(subtotal, kode);
+        let ppn = subtotal * 0.11;
+        let admin = hitungBiayaAdmin(subtotal);
+
+        let subtotalAfter = subtotal - diskon + ppn + admin;
+        let grandTotal = subtotalAfter + ongkir;
+
+        if (diskon > 0) {
+            $("#row-diskon").show();
+            let persenText = Math.round(persen * 100);
+            $("#diskon_voucher").html(`-IDR ${diskon.toLocaleString('id-ID')} <br><small>(${persenText}%)</small>`);
+        } else {
+            $("#row-diskon").hide();
+        }
+
+        $("#ppn_value").text(`IDR ${ppn.toLocaleString('id-ID')}`);
+        $("#admin_value").text(`IDR ${admin.toLocaleString('id-ID')}`);
+        $("#subtotal_after").text(`IDR ${subtotalAfter.toLocaleString('id-ID')}`);
         $("#ongkir").val(ongkir);
-        $("#total").text(`IDR ${total.toLocaleString('id-ID')}`);
-        $("#total_harga").val(total);
+        $("#total").text(`IDR ${grandTotal.toLocaleString('id-ID')}`);
     }
 
 	$('#kelurahan').select2({
@@ -154,6 +223,10 @@ $("#layanan").on('change', function() {
     ongkir = parseInt($(this).val());
     hitungTotal();
 }); 
+
+$("#voucher_code").on('input', function() {
+    hitungTotal();
+});
 });
 </script>
 <?= $this->endSection() ?>
