@@ -17,7 +17,7 @@ class TransaksiController extends BaseController
 
 public function __construct()
     {
-        helper(['number', 'form']);
+        helper(['number', 'form', 'transaksi']);
         $this->cart = service('cart');
         $this->transactionModel = new TransactionModel();
         $this->transactionDetailModel = new TransactionDetailModel(); 
@@ -167,19 +167,36 @@ public function buy()
     $db = \Config\Database::connect();
     $db->transStart(); 
 
+    // total harga pembelian (belum termasuk ongkir)
     $subtotal = 0;
     foreach ($cartItems as $item) {
         $subtotal += $item['qty'] * $item['price'];
     }
 
     $ongkir = (int) $this->request->getPost('ongkir');
+    $voucherCode = $this->request->getPost('voucher_code');
+
+    // hitung komponen tambahan (semua berbasis total harga SEBELUM ongkir)
+    $ppn           = hitung_ppn($subtotal);
+    $biayaAdmin    = hitung_biaya_admin($subtotal);
+    $diskonVoucher = hitung_diskon_voucher($subtotal, $voucherCode);
+
+    // validasi voucher: kalau tidak valid, kode disimpan null / kosong
+    $voucherValid = $diskonVoucher > 0 ? strtoupper(trim($voucherCode)) : null;
+
+    $grandTotalTanpaOngkir = $subtotal - $diskonVoucher + $ppn + $biayaAdmin;
+    $totalHargaFinal = $grandTotalTanpaOngkir + $ongkir;
 
     $transaction = [
-        'username'    => $this->request->getPost('username'),
-        'alamat'      => $this->request->getPost('alamat'),
-        'ongkir'      => $ongkir,
-        'total_harga' => $subtotal + $ongkir,
-        'status'      => 0, 
+        'username'        => $this->request->getPost('username'),
+        'alamat'          => $this->request->getPost('alamat'),
+        'ongkir'          => $ongkir,
+        'total_harga'     => $totalHargaFinal,
+        'status'          => 0,
+        'ppn'             => $ppn,
+        'biaya_admin'     => $biayaAdmin,
+        'voucher_code'    => $voucherValid,
+        'diskon_voucher'  => $diskonVoucher,
     ];
 
     // insert transaction
@@ -207,7 +224,7 @@ public function buy()
         return redirect()->back()->with('error', 'Gagal membuat transaksi');
     }
 
-		//hapus session keranjang belanja 
+    // hapus session keranjang belanja 
     $this->cart->destroy();
     return redirect()->to(base_url());
 }
